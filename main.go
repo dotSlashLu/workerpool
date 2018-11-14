@@ -8,12 +8,13 @@ import (
 
 type Pool struct {
 	C  reflect.Value
-	wg sync.WaitGroup
+	wg *sync.WaitGroup
 }
 
 // Create a new worker pool
 func New(fn interface{}, concurrency int) (wp *Pool, err error) {
 	wp = new(Pool)
+	wp.wg = new(sync.WaitGroup)
 
 	fnType := reflect.TypeOf(fn)
 	if fnType.Kind() != reflect.Func || fnType.NumIn() != 1 {
