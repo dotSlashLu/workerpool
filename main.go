@@ -7,7 +7,7 @@ import (
 )
 
 type Pool struct {
-	C  reflect.Value
+	c  reflect.Value
 	wg *sync.WaitGroup
 }
 
@@ -25,17 +25,17 @@ func New(fn interface{}, concurrency int) (wp *Pool, err error) {
 	// make a chan of the first arg's type
 	msgT := fnType.In(0)
 	chanT := reflect.ChanOf(reflect.BothDir, msgT)
-	wp.C = reflect.MakeChan(chanT, concurrency)
+	wp.c = reflect.MakeChan(chanT, concurrency)
 
 	// start the pool
 	fnV := reflect.ValueOf(fn)
+	wp.wg.Add(concurrency)
 	for i := 0; i < concurrency; i++ {
 		go func() {
-			wp.wg.Add(1)
+			defer wp.wg.Done()
 			for {
-				m, ok := wp.C.Recv()
+				m, ok := wp.c.Recv()
 				if !ok {
-					wp.wg.Done()
 					return
 				}
 				args := [1]reflect.Value{m}
@@ -48,7 +48,7 @@ func New(fn interface{}, concurrency int) (wp *Pool, err error) {
 
 // Add job to the queue for processing
 func (wp *Pool) Work(msg interface{}) {
-	wp.C.Send(reflect.ValueOf(msg))
+	wp.c.Send(reflect.ValueOf(msg))
 }
 
 // Wait for all the jobs to be done
@@ -59,5 +59,5 @@ func (wp *Pool) Wait() {
 
 // Close the work queue
 func (wp *Pool) Close() {
-	wp.C.Close()
+	wp.c.Close()
 }
