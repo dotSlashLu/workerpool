@@ -7,11 +7,12 @@ import (
 )
 
 type Pool struct {
-	c  reflect.Value
-	wg *sync.WaitGroup
+	c      reflect.Value
+	wg     *sync.WaitGroup
+	closed bool
 }
 
-// Create a new worker pool
+// Create a new worker pool.
 func New(fn interface{}, concurrency int) (wp *Pool, err error) {
 	wp = new(Pool)
 	wp.wg = new(sync.WaitGroup)
@@ -19,7 +20,8 @@ func New(fn interface{}, concurrency int) (wp *Pool, err error) {
 	fnType := reflect.TypeOf(fn)
 	if fnType.Kind() != reflect.Func || fnType.NumIn() != 1 {
 		err = errors.New("fn should be a function with one parameter " +
-			"that receives job arguments")
+			"that receives job arguments(if you need more than one " +
+			"arguments, you might consider a composite type).")
 		return
 	}
 	// make a chan of the first arg's type
@@ -46,18 +48,22 @@ func New(fn interface{}, concurrency int) (wp *Pool, err error) {
 	return
 }
 
-// Add job to the queue for processing
+// Add a job to the job queue for processing.
 func (wp *Pool) Work(msg interface{}) {
 	wp.c.Send(reflect.ValueOf(msg))
 }
 
-// Wait for all the jobs to be done
-// Should be executed after Close()
+// Close the job queue channel and wait for all the jobs to be done.
 func (wp *Pool) Wait() {
+	wp.Close()
 	wp.wg.Wait()
 }
 
-// Close the work queue
+// Close the job queue channel.
 func (wp *Pool) Close() {
+	if wp.closed {
+		return
+	}
 	wp.c.Close()
+	wp.closed = true
 }
