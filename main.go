@@ -7,7 +7,7 @@ import (
 )
 
 type Pool struct {
-	c      reflect.Value
+	c      chan []interface{}
 	wg     *sync.WaitGroup
 	closed bool
 }
@@ -18,16 +18,11 @@ func New(fn interface{}, concurrency int) (wp *Pool, err error) {
 	wp.wg = new(sync.WaitGroup)
 
 	fnType := reflect.TypeOf(fn)
-	if fnType.Kind() != reflect.Func || fnType.NumIn() != 1 {
-		err = errors.New("fn should be a function with one parameter " +
-			"that receives job arguments(if you need more than one " +
-			"arguments, you might consider a composite type).")
+	if fnType.Kind() != reflect.Func {
+		err = errors.New("fn should be a function")
 		return
 	}
-	// make a chan of the first arg's type
-	msgT := fnType.In(0)
-	chanT := reflect.ChanOf(reflect.BothDir, msgT)
-	wp.c = reflect.MakeChan(chanT, concurrency)
+	wp.c = make(chan []interface{})
 
 	// start the pool
 	fnV := reflect.ValueOf(fn)
@@ -36,12 +31,15 @@ func New(fn interface{}, concurrency int) (wp *Pool, err error) {
 		go func() {
 			defer wp.wg.Done()
 			for {
-				m, ok := wp.c.Recv()
+				m, ok := <-wp.c
 				if !ok {
 					return
 				}
-				args := [1]reflect.Value{m}
-				fnV.Call(args[:])
+				args := make([]reflect.Value, len(m))
+				for i, argv := range m {
+					args[i] = reflect.ValueOf(argv)
+				}
+				fnV.Call(args)
 			}
 		}()
 	}
@@ -49,8 +47,12 @@ func New(fn interface{}, concurrency int) (wp *Pool, err error) {
 }
 
 // Add a job to the job queue for processing.
-func (wp *Pool) Work(msg interface{}) {
-	wp.c.Send(reflect.ValueOf(msg))
+func (wp *Pool) Work(args ...interface{}) {
+	msg := make([]interface{}, len(args))
+	for i, m := range args {
+		msg[i] = m
+	}
+	wp.c <- args
 }
 
 // Close the job queue channel and wait for all the jobs to be done.
@@ -64,6 +66,6 @@ func (wp *Pool) Close() {
 	if wp.closed {
 		return
 	}
-	wp.c.Close()
+	close(wp.c)
 	wp.closed = true
 }
